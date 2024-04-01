@@ -18,9 +18,10 @@ pub struct Match {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct MatchDatum {
-    #[serde(rename = "type")]
+    #[serde(rename = "datum_type")]
     pub typ: String,
-    pub value: String,
+    #[serde(rename = "datum_hash")]
+    pub hash: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]

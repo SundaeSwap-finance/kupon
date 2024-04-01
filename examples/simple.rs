@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let options: MatchOptions = MatchOptions::default()
         .only_unspent()
-        .address("addr_test1qrkua4yzegsu8g0xh0mkcc4uufdh2vnvfw2rhxmc6f30s6jdp276p7j8023vmum9wu8gp7q54f3rjke45j0klk3pmwvsttajw2");
+        .address("addr_test1wpesulg5dtt5y73r4zzay9qmy3wnlrxdg944xg4rzuvewls7nrsf0");
 
     let matches = kupon.matches(&options).await?;
     for m in matches {
