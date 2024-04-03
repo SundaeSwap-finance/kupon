@@ -40,6 +40,18 @@ impl Client {
             MatchResponse::Failure { hint } => Err(KuponError::KupoError(hint)),
         }
     }
+
+    pub async fn datum(&self, hash: &str) -> Result<Option<String>, KuponError> {
+        let mut datum_url = self.endpoint.clone();
+        datum_url.set_path(&format!("v1/datums/{}", hash));
+        let request = self.client.get(datum_url).build()?;
+        let response = self.client.execute(request).await?.json().await?;
+        match response {
+            Some(DatumResponse::Success { datum }) => Ok(Some(datum)),
+            Some(DatumResponse::Failure { hint }) => Err(KuponError::KupoError(hint)),
+            None => Ok(None),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -48,10 +60,26 @@ enum SpentStatus {
     Spent,
 }
 
+#[derive(Clone, Debug)]
+struct AssetIdOptions<'a> {
+    policy_id: &'a str,
+    asset_name: Option<&'a str>,
+}
+
+impl<'a> AssetIdOptions<'a> {
+    pub(crate) fn to_pattern(&self) -> String {
+        match self.asset_name {
+            Some(name) => format!("{}.{}", self.policy_id, name),
+            None => self.policy_id.to_owned(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MatchOptions<'a> {
     spent_status: Option<SpentStatus>,
     address: Option<&'a str>,
+    asset: Option<AssetIdOptions<'a>>,
 }
 
 impl<'a> MatchOptions<'a> {
@@ -76,16 +104,48 @@ impl<'a> MatchOptions<'a> {
         }
     }
 
+    pub fn policy_id<T: Into<&'a str>>(self, policy_id: T) -> Self {
+        Self {
+            asset: Some(AssetIdOptions {
+                policy_id: policy_id.into(),
+                asset_name: None,
+            }),
+            ..self
+        }
+    }
+
+    pub fn asset_id<T1: Into<&'a str>, T2: Into<&'a str>>(
+        self,
+        policy_id: T1,
+        asset_name: T2,
+    ) -> Self {
+        Self {
+            asset: Some(AssetIdOptions {
+                policy_id: policy_id.into(),
+                asset_name: Some(asset_name.into()),
+            }),
+            ..self
+        }
+    }
+
     pub(crate) fn to_url(&self, endpoint: &Url) -> Result<Url, KuponError> {
         let mut url = endpoint.clone();
 
-        if let Some(address) = self.address {
-            url.set_path(&format!("matches/{}", address));
-        } else {
-            url.set_path("matches");
+        let mut query = url.query_pairs_mut();
+
+        let mut pattern = self.address.map(|s| s.to_owned());
+
+        if let Some(asset) = &self.asset {
+            if pattern.is_none() {
+                pattern = Some(asset.to_pattern());
+            } else {
+                query.append_pair("policy_id", asset.policy_id);
+                if let Some(asset_name) = asset.asset_name {
+                    query.append_pair("asset_name", asset_name);
+                }
+            }
         }
 
-        let mut query = url.query_pairs_mut();
         match self.spent_status {
             Some(SpentStatus::Spent) => {
                 query.append_key_only("spent");
@@ -95,7 +155,15 @@ impl<'a> MatchOptions<'a> {
             }
             None => {}
         };
+
         drop(query);
+
+        if let Some(pattern) = pattern {
+            url.set_path(&format!("matches/{}", pattern));
+        } else {
+            url.set_path("matches");
+        }
+
         Ok(url)
     }
 }
@@ -104,5 +172,12 @@ impl<'a> MatchOptions<'a> {
 #[serde(untagged)]
 enum MatchResponse {
     Success(Vec<Match>),
+    Failure { hint: String },
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum DatumResponse {
+    Success { datum: String },
     Failure { hint: String },
 }
