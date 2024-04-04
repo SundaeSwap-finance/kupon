@@ -97,32 +97,28 @@ impl<'a> MatchOptions<'a> {
         }
     }
 
-    pub fn address<T: Into<&'a str>>(self, address: T) -> Self {
+    pub fn address(self, address: &'a str) -> Self {
         Self {
-            address: Some(address.into()),
+            address: Some(address),
             ..self
         }
     }
 
-    pub fn policy_id<T: Into<&'a str>>(self, policy_id: T) -> Self {
+    pub fn policy_id(self, policy_id: &'a str) -> Self {
         Self {
             asset: Some(AssetIdOptions {
-                policy_id: policy_id.into(),
+                policy_id,
                 asset_name: None,
             }),
             ..self
         }
     }
 
-    pub fn asset_id<T1: Into<&'a str>, T2: Into<&'a str>>(
-        self,
-        policy_id: T1,
-        asset_name: T2,
-    ) -> Self {
+    pub fn asset_id(self, policy_id: &'a str, asset_name: &'a str) -> Self {
         Self {
             asset: Some(AssetIdOptions {
-                policy_id: policy_id.into(),
-                asset_name: Some(asset_name.into()),
+                policy_id,
+                asset_name: Some(asset_name),
             }),
             ..self
         }
