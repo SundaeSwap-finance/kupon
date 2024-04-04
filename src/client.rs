@@ -167,17 +167,6 @@ impl<'a> MatchOptions<'a> {
 
         let mut pattern = self.address.map(|s| s.to_owned());
 
-        if let Some(asset) = &self.asset {
-            if pattern.is_none() {
-                pattern = Some(asset.to_pattern());
-            } else {
-                query.append_pair("policy_id", asset.policy_id);
-                if let Some(asset_name) = asset.asset_name {
-                    query.append_pair("asset_name", asset_name);
-                }
-            }
-        }
-
         if let Some(transaction) = &self.transaction {
             if pattern.is_none() {
                 pattern = Some(transaction.to_pattern());
@@ -185,6 +174,17 @@ impl<'a> MatchOptions<'a> {
                 query.append_pair("transaction_id", transaction.transaction_id);
                 if let Some(index) = transaction.output_index {
                     query.append_pair("output_index", &index.to_string());
+                }
+            }
+        }
+
+        if let Some(asset) = &self.asset {
+            if pattern.is_none() {
+                pattern = Some(asset.to_pattern());
+            } else {
+                query.append_pair("policy_id", asset.policy_id);
+                if let Some(asset_name) = asset.asset_name {
+                    query.append_pair("asset_name", asset_name);
                 }
             }
         }
