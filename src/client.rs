@@ -70,7 +70,22 @@ impl<'a> AssetIdOptions<'a> {
     pub(crate) fn to_pattern(&self) -> String {
         match self.asset_name {
             Some(name) => format!("{}.{}", self.policy_id, name),
-            None => self.policy_id.to_owned(),
+            None => format!("{}.*", self.policy_id),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct TransactionIdOptions<'a> {
+    transaction_id: &'a str,
+    output_index: Option<u64>,
+}
+
+impl<'a> TransactionIdOptions<'a> {
+    pub(crate) fn to_pattern(&self) -> String {
+        match self.output_index {
+            Some(index) => format!("{}@{}", index, self.transaction_id),
+            None => format!("*@{}", self.transaction_id)
         }
     }
 }
@@ -80,6 +95,7 @@ pub struct MatchOptions<'a> {
     spent_status: Option<SpentStatus>,
     address: Option<&'a str>,
     asset: Option<AssetIdOptions<'a>>,
+    transaction: Option<TransactionIdOptions<'a>>,
 }
 
 impl<'a> MatchOptions<'a> {
@@ -124,6 +140,26 @@ impl<'a> MatchOptions<'a> {
         }
     }
 
+    pub fn transaction(self, transaction_id: &'a str) -> Self {
+        Self {
+            transaction: Some(TransactionIdOptions {
+                transaction_id,
+                output_index: None,
+            }),
+            ..self
+        }
+    }
+
+    pub fn transaction_output(self, transaction_id: &'a str, index: u64) -> Self {
+        Self {
+            transaction: Some(TransactionIdOptions {
+                transaction_id,
+                output_index: Some(index)
+            }),
+            ..self
+        }
+    }
+
     pub(crate) fn to_url(&self, endpoint: &Url) -> Result<Url, KuponError> {
         let mut url = endpoint.clone();
 
@@ -138,6 +174,17 @@ impl<'a> MatchOptions<'a> {
                 query.append_pair("policy_id", asset.policy_id);
                 if let Some(asset_name) = asset.asset_name {
                     query.append_pair("asset_name", asset_name);
+                }
+            }
+        }
+
+        if let Some(transaction) = &self.transaction {
+            if pattern.is_none() {
+                pattern = Some(transaction.to_pattern());
+            } else {
+                query.append_pair("transaction_id", transaction.transaction_id);
+                if let Some(index) = transaction.output_index {
+                    query.append_pair("output_index", &index.to_string());
                 }
             }
         }
