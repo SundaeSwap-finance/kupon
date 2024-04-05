@@ -85,7 +85,7 @@ impl<'a> TransactionIdOptions<'a> {
     pub(crate) fn to_pattern(&self) -> String {
         match self.output_index {
             Some(index) => format!("{}@{}", index, self.transaction_id),
-            None => format!("*@{}", self.transaction_id)
+            None => format!("*@{}", self.transaction_id),
         }
     }
 }
@@ -130,11 +130,15 @@ impl<'a> MatchOptions<'a> {
         }
     }
 
-    pub fn asset_id(self, policy_id: &'a str, asset_name: &'a str) -> Self {
+    pub fn asset_id(self, asset_id: &'a str) -> Self {
+        let (policy_id, asset_name) = match asset_id.split_once('.') {
+            Some((policy_id, asset_name)) => (policy_id, Some(asset_name)),
+            None => (asset_id, None),
+        };
         Self {
             asset: Some(AssetIdOptions {
                 policy_id,
-                asset_name: Some(asset_name),
+                asset_name,
             }),
             ..self
         }
@@ -154,7 +158,7 @@ impl<'a> MatchOptions<'a> {
         Self {
             transaction: Some(TransactionIdOptions {
                 transaction_id,
-                output_index: Some(index)
+                output_index: Some(index),
             }),
             ..self
         }

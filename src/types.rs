@@ -46,6 +46,13 @@ impl AssetId {
             asset_name: asset_name.map(|a| a.to_owned()),
         }
     }
+
+    pub fn to_hex(&self) -> String {
+        match &self.asset_name {
+            Some(name) => format!("{}.{}", self.policy_id, name),
+            None => self.policy_id.to_string(),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for AssetId {
