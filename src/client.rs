@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde::Deserialize;
 use url::Url;
 
@@ -31,7 +33,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn matches(&self, options: &MatchOptions<'_>) -> Result<Vec<Match>, KuponError> {
+    pub async fn matches(&self, options: &MatchOptions) -> Result<Vec<Match>, KuponError> {
         let match_url = options.to_url(&self.endpoint)?;
         let request = self.client.get(match_url).build()?;
         let response = self.client.execute(request).await?.json().await?;
@@ -61,14 +63,14 @@ enum SpentStatus {
 }
 
 #[derive(Clone, Debug)]
-struct AssetIdOptions<'a> {
-    policy_id: &'a str,
-    asset_name: Option<&'a str>,
+struct AssetIdOptions {
+    policy_id: Cow<'static, str>,
+    asset_name: Option<Cow<'static, str>>,
 }
 
-impl<'a> AssetIdOptions<'a> {
+impl AssetIdOptions {
     pub(crate) fn to_pattern(&self) -> String {
-        match self.asset_name {
+        match &self.asset_name {
             Some(name) => format!("{}.{}", self.policy_id, name),
             None => format!("{}.*", self.policy_id),
         }
@@ -76,12 +78,12 @@ impl<'a> AssetIdOptions<'a> {
 }
 
 #[derive(Clone, Debug)]
-struct TransactionIdOptions<'a> {
-    transaction_id: &'a str,
+struct TransactionIdOptions {
+    transaction_id: Cow<'static, str>,
     output_index: Option<u64>,
 }
 
-impl<'a> TransactionIdOptions<'a> {
+impl TransactionIdOptions {
     pub(crate) fn to_pattern(&self) -> String {
         match self.output_index {
             Some(index) => format!("{}@{}", index, self.transaction_id),
@@ -91,14 +93,15 @@ impl<'a> TransactionIdOptions<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct MatchOptions<'a> {
+pub struct MatchOptions {
     spent_status: Option<SpentStatus>,
-    address: Option<&'a str>,
-    asset: Option<AssetIdOptions<'a>>,
-    transaction: Option<TransactionIdOptions<'a>>,
+    address: Option<Cow<'static, str>>,
+    credential: Option<Cow<'static, str>>,
+    asset: Option<AssetIdOptions>,
+    transaction: Option<TransactionIdOptions>,
 }
 
-impl<'a> MatchOptions<'a> {
+impl MatchOptions {
     pub fn only_spent(self) -> Self {
         Self {
             spent_status: Some(SpentStatus::Spent),
@@ -113,51 +116,62 @@ impl<'a> MatchOptions<'a> {
         }
     }
 
-    pub fn address(self, address: &'a str) -> Self {
+    pub fn address<T: Into<Cow<'static, str>>>(self, address: T) -> Self {
         Self {
-            address: Some(address),
+            address: Some(address.into()),
             ..self
         }
     }
 
-    pub fn policy_id(self, policy_id: &'a str) -> Self {
+    pub fn credential<T: Into<Cow<'static, str>>>(self, credential: T) -> Self {
+        Self {
+            credential: Some(credential.into()),
+            ..self
+        }
+    }
+
+    pub fn policy_id<T: Into<Cow<'static, str>>>(self, policy_id: T) -> Self {
         Self {
             asset: Some(AssetIdOptions {
-                policy_id,
+                policy_id: policy_id.into(),
                 asset_name: None,
             }),
             ..self
         }
     }
 
-    pub fn asset_id(self, asset_id: &'a str) -> Self {
+    pub fn asset_id(self, asset_id: &str) -> Self {
         let (policy_id, asset_name) = match asset_id.split_once('.') {
-            Some((policy_id, asset_name)) => (policy_id, Some(asset_name)),
+            Some((policy_id, asset_name)) => (policy_id, Some(Cow::Owned(asset_name.into()))),
             None => (asset_id, None),
         };
         Self {
             asset: Some(AssetIdOptions {
-                policy_id,
+                policy_id: Cow::Owned(policy_id.into()),
                 asset_name,
             }),
             ..self
         }
     }
 
-    pub fn transaction(self, transaction_id: &'a str) -> Self {
+    pub fn transaction<T: Into<Cow<'static, str>>>(self, transaction_id: T) -> Self {
         Self {
             transaction: Some(TransactionIdOptions {
-                transaction_id,
+                transaction_id: transaction_id.into(),
                 output_index: None,
             }),
             ..self
         }
     }
 
-    pub fn transaction_output(self, transaction_id: &'a str, index: u64) -> Self {
+    pub fn transaction_output<T: Into<Cow<'static, str>>>(
+        self,
+        transaction_id: T,
+        index: u64,
+    ) -> Self {
         Self {
             transaction: Some(TransactionIdOptions {
-                transaction_id,
+                transaction_id: transaction_id.into(),
                 output_index: Some(index),
             }),
             ..self
@@ -165,17 +179,27 @@ impl<'a> MatchOptions<'a> {
     }
 
     pub(crate) fn to_url(&self, endpoint: &Url) -> Result<Url, KuponError> {
+        if self.address.is_some() && self.credential.is_some() {
+            return Err(KuponError::InvalidQuery(
+                "cannot query by both address and credential at once".into(),
+            ));
+        }
+
         let mut url = endpoint.clone();
 
         let mut query = url.query_pairs_mut();
 
-        let mut pattern = self.address.map(|s| s.to_owned());
+        let mut pattern = self
+            .address
+            .clone()
+            .or(self.credential.clone())
+            .map(|s| s.into_owned());
 
         if let Some(transaction) = &self.transaction {
             if pattern.is_none() {
                 pattern = Some(transaction.to_pattern());
             } else {
-                query.append_pair("transaction_id", transaction.transaction_id);
+                query.append_pair("transaction_id", &transaction.transaction_id);
                 if let Some(index) = transaction.output_index {
                     query.append_pair("output_index", &index.to_string());
                 }
@@ -186,8 +210,8 @@ impl<'a> MatchOptions<'a> {
             if pattern.is_none() {
                 pattern = Some(asset.to_pattern());
             } else {
-                query.append_pair("policy_id", asset.policy_id);
-                if let Some(asset_name) = asset.asset_name {
+                query.append_pair("policy_id", &asset.policy_id);
+                if let Some(asset_name) = &asset.asset_name {
                     query.append_pair("asset_name", asset_name);
                 }
             }
