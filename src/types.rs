@@ -30,7 +30,7 @@ pub struct MatchValue {
     pub assets: BTreeMap<AssetId, u64>,
 }
 
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AssetId {
     pub policy_id: String,
     pub asset_name: Option<String>,
