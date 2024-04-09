@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use serde::Deserialize;
 use url::Url;
 
@@ -64,8 +62,8 @@ enum SpentStatus {
 
 #[derive(Clone, Debug)]
 struct AssetIdOptions {
-    policy_id: Cow<'static, str>,
-    asset_name: Option<Cow<'static, str>>,
+    policy_id: String,
+    asset_name: Option<String>,
 }
 
 impl AssetIdOptions {
@@ -79,7 +77,7 @@ impl AssetIdOptions {
 
 #[derive(Clone, Debug)]
 struct TransactionIdOptions {
-    transaction_id: Cow<'static, str>,
+    transaction_id: String,
     output_index: Option<u64>,
 }
 
@@ -95,8 +93,8 @@ impl TransactionIdOptions {
 #[derive(Clone, Debug, Default)]
 pub struct MatchOptions {
     spent_status: Option<SpentStatus>,
-    address: Option<Cow<'static, str>>,
-    credential: Option<Cow<'static, str>>,
+    address: Option<String>,
+    credential: Option<String>,
     asset: Option<AssetIdOptions>,
     transaction: Option<TransactionIdOptions>,
 }
@@ -116,21 +114,21 @@ impl MatchOptions {
         }
     }
 
-    pub fn address<T: Into<Cow<'static, str>>>(self, address: T) -> Self {
+    pub fn address<T: Into<String>>(self, address: T) -> Self {
         Self {
             address: Some(address.into()),
             ..self
         }
     }
 
-    pub fn credential<T: Into<Cow<'static, str>>>(self, credential: T) -> Self {
+    pub fn credential<T: Into<String>>(self, credential: T) -> Self {
         Self {
             credential: Some(credential.into()),
             ..self
         }
     }
 
-    pub fn policy_id<T: Into<Cow<'static, str>>>(self, policy_id: T) -> Self {
+    pub fn policy_id<T: Into<String>>(self, policy_id: T) -> Self {
         Self {
             asset: Some(AssetIdOptions {
                 policy_id: policy_id.into(),
@@ -142,19 +140,19 @@ impl MatchOptions {
 
     pub fn asset_id(self, asset_id: &str) -> Self {
         let (policy_id, asset_name) = match asset_id.split_once('.') {
-            Some((policy_id, asset_name)) => (policy_id, Some(Cow::Owned(asset_name.into()))),
+            Some((policy_id, asset_name)) => (policy_id, Some(asset_name.into())),
             None => (asset_id, None),
         };
         Self {
             asset: Some(AssetIdOptions {
-                policy_id: Cow::Owned(policy_id.into()),
+                policy_id: policy_id.into(),
                 asset_name,
             }),
             ..self
         }
     }
 
-    pub fn transaction<T: Into<Cow<'static, str>>>(self, transaction_id: T) -> Self {
+    pub fn transaction<T: Into<String>>(self, transaction_id: T) -> Self {
         Self {
             transaction: Some(TransactionIdOptions {
                 transaction_id: transaction_id.into(),
@@ -164,11 +162,7 @@ impl MatchOptions {
         }
     }
 
-    pub fn transaction_output<T: Into<Cow<'static, str>>>(
-        self,
-        transaction_id: T,
-        index: u64,
-    ) -> Self {
+    pub fn transaction_output<T: Into<String>>(self, transaction_id: T, index: u64) -> Self {
         Self {
             transaction: Some(TransactionIdOptions {
                 transaction_id: transaction_id.into(),
@@ -189,11 +183,7 @@ impl MatchOptions {
 
         let mut query = url.query_pairs_mut();
 
-        let mut pattern = self
-            .address
-            .clone()
-            .or(self.credential.clone())
-            .map(|s| s.into_owned());
+        let mut pattern = self.address.clone().or(self.credential.clone());
 
         if let Some(transaction) = &self.transaction {
             if pattern.is_none() {
