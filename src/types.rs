@@ -3,6 +3,34 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
+pub struct Health {
+    pub status: HealthStatus,
+    pub info: Option<ServerInfo>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum HealthStatus {
+    Healthy,
+    Syncing,
+    Disconnected,
+    Error(String),
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ServerInfo {
+    pub most_recent_checkpoint: Option<u64>,
+    pub most_recent_node_tip: Option<u64>,
+    pub version: String,
+}
+impl ServerInfo {
+    pub fn sync_progress(&self) -> String {
+        let [checkpoint, node_tip] = [self.most_recent_checkpoint, self.most_recent_node_tip]
+            .map(|val| val.map(|v| v.to_string()).unwrap_or("?".into()));
+        format!("synced {} of {}", checkpoint, node_tip)
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct Match {
     pub transaction_index: u64,
     pub transaction_id: String,

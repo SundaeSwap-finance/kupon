@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use url::Url;
 
-use crate::{errors::KuponError, types::Match};
+use crate::{errors::KuponError, Health, HealthStatus, Match, ServerInfo};
 
 const DEFAULT_ENDPOINT: &str = "http://localhost:1442";
 
@@ -31,6 +31,43 @@ pub struct Client {
 }
 
 impl Client {
+    pub async fn health(&self) -> Health {
+        match self.try_health().await {
+            Ok(health) => health,
+            Err(error) => Health {
+                status: HealthStatus::Error(error.to_string()),
+                info: None,
+            },
+        }
+    }
+
+    async fn try_health(&self) -> Result<Health, KuponError> {
+        let mut health_url = self.endpoint.clone();
+        health_url.set_path("health");
+
+        let request = self
+            .client
+            .get(health_url)
+            .header("Accept", "application/json")
+            .build()?;
+        let response = self.client.execute(request).await?;
+        let mut status = match response.status().as_u16() {
+            200 => HealthStatus::Healthy,
+            202 => HealthStatus::Syncing,
+            503 => HealthStatus::Disconnected,
+            other => HealthStatus::Error(format!("Unexpected response code {}", other)),
+        };
+        let info = match response.json().await {
+            Ok(HealthResponse::Success(info)) => Some(info),
+            Ok(HealthResponse::Failure { hint }) => {
+                status = HealthStatus::Error(hint);
+                None
+            }
+            Err(_) => None,
+        };
+        Ok(Health { status, info })
+    }
+
     pub async fn matches(&self, options: &MatchOptions) -> Result<Vec<Match>, KuponError> {
         let match_url = options.to_url(&self.endpoint)?;
         let request = self.client.get(match_url).build()?;
@@ -227,6 +264,13 @@ impl MatchOptions {
 
         Ok(url)
     }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum HealthResponse {
+    Success(ServerInfo),
+    Failure { hint: String },
 }
 
 #[derive(Deserialize, Debug)]
