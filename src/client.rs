@@ -1,4 +1,8 @@
+use std::time::Duration;
+
+use rand::{thread_rng, Rng};
 use serde::Deserialize;
+use tokio::time::sleep;
 use url::Url;
 
 use crate::{errors::KuponError, Health, HealthStatus, Match, ServerInfo};
@@ -8,26 +12,37 @@ const DEFAULT_ENDPOINT: &str = "http://localhost:1442";
 #[derive(Default)]
 pub struct Builder {
     endpoint: Option<String>,
+    retries: usize,
 }
 
 impl Builder {
     pub fn with_endpoint<T: Into<String>>(endpoint: T) -> Self {
         Self {
             endpoint: Some(endpoint.into()),
+            retries: 0,
         }
+    }
+
+    pub fn with_retries(self, retries: usize) -> Self {
+        Self { retries, ..self }
     }
 
     pub fn build(self) -> Result<Client, KuponError> {
         let endpoint = self.endpoint.as_deref().unwrap_or(DEFAULT_ENDPOINT);
         let endpoint = Url::parse(endpoint)?;
         let client = reqwest::ClientBuilder::new().build()?;
-        Ok(Client { client, endpoint })
+        Ok(Client {
+            client,
+            endpoint,
+            retries: self.retries,
+        })
     }
 }
 
 pub struct Client {
     client: reqwest::Client,
     endpoint: Url,
+    retries: usize,
 }
 
 impl Client {
@@ -69,12 +84,24 @@ impl Client {
     }
 
     pub async fn matches(&self, options: &MatchOptions) -> Result<Vec<Match>, KuponError> {
-        let match_url = options.to_url(&self.endpoint)?;
-        let request = self.client.get(match_url).build()?;
-        let response = self.client.execute(request).await?.json().await?;
-        match response {
-            MatchResponse::Success(matches) => Ok(matches),
-            MatchResponse::Failure { hint } => Err(KuponError::KupoError(hint)),
+        let mut retries = self.retries;
+        let mut delay = Duration::from_millis(100);
+        loop {
+            let match_url = options.to_url(&self.endpoint)?;
+            let request = self.client.get(match_url).build()?;
+            let response = self.client.execute(request).await?;
+            let status = response.status();
+            match response.json().await? {
+                MatchResponse::Success(matches) => return Ok(matches),
+                MatchResponse::Failure { hint } => {
+                    if retries == 0 || status.as_u16() != 503 {
+                        return Err(KuponError::KupoError(hint));
+                    }
+                    sleep(delay).await;
+                    retries -= 1;
+                    delay = delay.mul_f32(thread_rng().gen_range(1.5..2.5))
+                }
+            };
         }
     }
 

@@ -3,7 +3,9 @@ use tokio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let kupon: Client = Builder::with_endpoint("http://localhost:1442").build()?;
+    let kupon: Client = Builder::with_endpoint("http://localhost:1442")
+        .with_retries(3)
+        .build()?;
 
     let options: MatchOptions = MatchOptions::default()
         .only_unspent()
