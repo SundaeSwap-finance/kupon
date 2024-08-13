@@ -12,6 +12,7 @@ const DEFAULT_ENDPOINT: &str = "http://localhost:1442";
 #[derive(Default)]
 pub struct Builder {
     endpoint: Option<String>,
+    timeout: Option<Duration>,
     retries: usize,
 }
 
@@ -19,6 +20,7 @@ impl Builder {
     pub fn with_endpoint<T: Into<String>>(endpoint: T) -> Self {
         Self {
             endpoint: Some(endpoint.into()),
+            timeout: None,
             retries: 0,
         }
     }
@@ -27,10 +29,21 @@ impl Builder {
         Self { retries, ..self }
     }
 
+    pub fn with_timeout(self, timeout: Duration) -> Self {
+        Self {
+            timeout: Some(timeout),
+            ..self
+        }
+    }
+
     pub fn build(self) -> Result<Client, KuponError> {
         let endpoint = self.endpoint.as_deref().unwrap_or(DEFAULT_ENDPOINT);
         let endpoint = Url::parse(endpoint)?;
-        let client = reqwest::ClientBuilder::new().build()?;
+        let mut builder = reqwest::ClientBuilder::new();
+        if let Some(timeout) = self.timeout {
+            builder = builder.timeout(timeout);
+        }
+        let client = builder.build()?;
         Ok(Client {
             client,
             endpoint,
